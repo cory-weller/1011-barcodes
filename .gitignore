@@ -1,2 +1,6 @@
 *.vcf.gz
 *.tab
+*.tbi
+chr*.tsv
+*.png
+*.sif
