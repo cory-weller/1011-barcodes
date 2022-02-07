@@ -1,0 +1,55 @@
+BootStrap: docker
+From: ubuntu:focal
+
+%post
+    apt -y update
+    apt install -y \
+        dirmngr \
+        gnupg \
+        apt-transport-https \
+        ca-certificates \
+        software-properties-common \
+        gcc \
+        make \
+        libbz2-dev \
+        zlib1g-dev \
+        libncurses5-dev  \
+        libncursesw5-dev \
+        liblzma-dev \
+        tabix
+
+    # Add necessary keys and repo for installing R 4.0 on ubuntu 20
+    apt -y update
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E298A3A825C0D65DFD57CBB651716619E084DAB9
+    add-apt-repository 'deb https://cloud.r-project.org/bin/linux/ubuntu focal-cran40/'
+
+    apt-get install -y \
+        r-base \
+        r-base-core \
+        r-recommended \
+        r-base-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        g++ \
+        curl \
+        libxml2 \
+        libxml2-dev \
+        xauth
+    
+    # libopenmpi-dev openmpi-bin openmpi-common openmpi-doc openssh-client openssh-server libssh-dev wget vim git nano git cmake  gfortran g++ curl wget python autoconf bzip2 libtool libtool-bin python-pip python-dev
+
+    R --no-echo -e "install.packages('data.table', repos='http://cran.us.r-project.org')"
+    R --no-echo -e "install.packages('R.utils', repos='http://cran.us.r-project.org')"
+    R --no-echo -e "install.packages('ggplot2', repos='http://cran.us.r-project.org')"
+    R --no-echo -e "install.packages('foreach', repos='http://cran.us.r-project.org')"
+    R --no-echo -e "install.packages('doMC', repos='http://cran.us.r-project.org')"
+    R --no-echo -e "install.packages('ggthemes', repos='http://cran.us.r-project.org')"
+    R --no-echo -e "install.packages('BiocManager', repos='http://cran.us.r-project.org')"
+    R --no-echo -e "BiocManager::install('DESeq2')"
+    R --no-echo -e "BiocManager::install('apeglm')"
+
+
+%environment
+    export LANG="en_US.UTF-8"
+    export LC_ALL="C"
+    export DEBIAN_FRONTEND="noninteractive"
