@@ -28,10 +28,15 @@ Search settings for expression coordinates:
 | table     | transRegCode                          |
 | region    | genome                                |
 
-# bgzip and tabix-index chromosome vcf files
+# retrieve bgzipped and tabix-index for S288C vcf files
 ```
-(cd genomes && for file in *.vcf; do singularity exec ../src/singularity.sif bgzip $file; done)
-(cd genomes && for file in *.vcf.gz; do singularity exec ../src/singularity.sif tabix -p vcf $file; done)
+remotedata='nihbox'
+mkdir -p data/genomes/
+rclone copy ${remotedata}:/S288C/vcf/ data/genomes/
+# If working with raw vcf files, generate bgzipped files
+# and tabix indices via:
+# (cd data/genomes && for file in *.vcf; do singularity exec ../src/singularity.sif bgzip $file; done)
+# (cd data/genomes && for file in *.vcf.gz; do singularity exec ../src/singularity.sif tabix -p vcf $file; done)
 
 ```
 
