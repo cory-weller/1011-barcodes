@@ -6,6 +6,9 @@ library(doMC)
 library(ggplot2)
 registerDoMC(cores=4)
 
+options(scipen=999)
+
+
 args <- commandArgs(trailingOnly = TRUE)
 
 headerText <- colnames(fread('data/header.txt'))
@@ -13,16 +16,23 @@ headerText <- colnames(fread('data/header.txt'))
 chromosome <- args[1]
 start <- args[2]
 stop <- args[3]
-thresholds <- as.numeric(args[4])
-
 
 
 importGenotypes <- function(chromosome, start, stop) {
     vcfFilename <- paste('data/genomes/chromosome', chromosome, '.vcf.gz', sep='')
     tabixCommand <- paste('tabix ', vcfFilename, ' chromosome',chromosome, ':', start, '-', stop, sep='')
-    output <- fread(cmd=tabixCommand)
-    setnames(output, headerText)
-    return(output[])
+    genotypes <- fread(cmd=tabixCommand)
+    if(nrow(genotypes) == 0) {
+        return(NULL)
+    }
+    setnames(genotypes, headerText)
+    strainNames <- colnames(genotypes)[10:ncol(genotypes)]
+    genotypes <- genotypes[, (strainNames) := lapply(.SD, function(x) factor(x, levels=c('0/0', './.', '1/1'))), .SDcols=strainNames][]
+    genotypes <- genotypes[, (strainNames) := lapply(.SD, function(x) as.numeric(x)), .SDcols=strainNames]
+    replaceValues(genotypes, 2, NA)
+    replaceValues(genotypes, 1, 0)
+    replaceValues(genotypes, 3, 1)
+    return(genotypes[])
 }
 
 
@@ -38,74 +48,53 @@ fillNA <- function(DT, x) {
         set(DT,which(is.na(DT[[j]])),j,x)
 }
 
+replaceValues <- function(DT, x1, x2) {
+    # replaces all NA values with x in data.table DT
+    for (j in seq_len(ncol(DT)))
+        set(DT, which(DT[[j]] == x1), j, x2)
+}
 
-# ref = 0
-# no data = 1
-# alt = 2
-# anything else = 9
 
-
-# a.genotypes[, nRef := apply(.SD, 1, function(x) sum(x=="0/0", na.rm=TRUE)), .SDcols=cols]
-# a.genotypes[, nAlt := apply(.SD, 1, function(x) sum(x=="1/1", na.rm=TRUE)), .SDcols=cols]
-# a.genotypes <- a.genotypes[nRef != 0 & nAlt != 0]
-
-testRegion <- function(DT, matingTypes, chromosome, start, stop) {
+testRegion <- function(matingTypes, chromosome, start, stop) {
+    DT <- importGenotypes(chromosome, start, stop)
+    if(nrow(DT) == 0) {
+        print('no variants within region')
+    }
     setkey(DT, POS)
     print(paste('testing region ', chromosome, ':', start, '-', stop, sep=''))
     o <- foreach(matingType = c('a','b'), .combine='rbind') %do% {
         print(paste('mating type: ', matingType, sep=''))
         starting.strain <- 'S288C'
         strains <- matingTypes[Mating == matingType, Standardized_name]
-        foreach(divergence.threshold = 1:thresholds, .combine='rbind') %do% {
-            print(paste('divergence threshold: ', divergence.threshold, sep=''))
-            foreach(iteration = 1:20, .combine='rbind') %dopar% {
-                DT.sub <- copy(DT)
-                remaining <- strains[strains != starting.strain]
-                chosen <- DT[, c('#CHROM', 'POS'), with=FALSE]
-                setkey(chosen, POS)
-                chosen[, 'S288C' := 0]
-                #chosen[, nRef := 1]
-                chosen[, nAlt := 0]
-                # while there are still candidates remaining to be checked
-                while(length(remaining) > 0) {
-                    # randomly take one of the remaining strains and extract its genotypes
-                    candidate <- sample(remaining, size=1)
-                    candidate.genotypes <- DT.sub[, get(candidate)]
-                    # if candidate differs at any sites that are currently fixed in the population
-                    if(sum(chosen$nAlt == 0 & candidate.genotypes == 2) >= divergence.threshold) {
-                    #if(any(chosen$nAlt == 0 & candidate.genotypes == 2)) {
-                        # add candidate
-                        chosen[, eval(quote(candidate)) := candidate.genotypes]
-                        # pdate ref and alt counts
-                        # chosen[get(candidate) == 0, nRef := nRef + 1] # ref allele counts don't matter
-                        # as all sites have ref allele represented in S288C
-                        chosen[get(candidate) == 2, nAlt := nAlt + 1]
-                        # subset table to only include rows that are currently fixed
-                        #chosen <- chosen[nAlt == 0]
-                        #DT.sub <- DT.sub[ .(chosen$POS)]
-                    } 
-                    # eliminate candidate from remaining regardless of whether it was added to the pot
-                    remaining <- remaining[remaining != candidate]
-                }
-                n.strains <- ncol(chosen)-4
-            chosenStrains <- paste(colnames(chosen)[! colnames(chosen) %in% c('#CHROM','POS', 'nRef','nAlt')], collapse=',')
-            return(data.table(chromosome, start, stop, matingType, iteration, divergence.threshold, n.strains, chosenStrains))
+        remaining <- strains[strains != starting.strain]
+        chosen <- DT[, c('#CHROM', 'POS'), with=FALSE]
+        chosen[, 'S288C' := 0]
+        chosen[, c('#CHROM', 'POS') := NULL]
+        #chosen[, nRef := 1]
+        #chosen[, nAlt := 0]
+        # while there are still candidates remaining to be checked
+        while(length(remaining) > 0) {
+            # randomly take one of the remaining strains and extract its genotypes
+            candidate <- sample(remaining, size=1)
+            candidate.genotypes <- DT[, get(candidate)]
+            # if candidate isn't all NAs...
+            if(! all(is.na(candidate.genotypes))) {
+                # if not any chosen strain for which all genotypes are equal to candidate
+                if(!any(chosen[, lapply(.SD, function(x) all(candidate.genotypes==x, na.rm=T))])) {
+                    # add candidate
+                    chosen[, eval(quote(candidate)) := candidate.genotypes]
+                } 
             }
+            # eliminate candidate from remaining regardless of whether it was added to the pot
+            remaining <- remaining[remaining != candidate]
         }
+        n.strains <- ncol(chosen)
+    chosenStrains <- paste(colnames(chosen)[! colnames(chosen) %in% c('#CHROM','POS', 'nRef','nAlt')], collapse=',')
+    return(data.table(chromosome, start, stop, matingType, n.strains, chosenStrains))
     }
-    g <- ggplot(o, aes(x=factor(divergence.threshold), y=n.strains, color=matingType)) +
-        geom_point(position=position_jitterdodge(dodge.width=1)) +
-        labs(x='# of unique SNPs required', y='# of strains uniquely identifiable at (x) SNPs')
-        ggsave(g, file=paste('chr', chromosome, '-', start, '-', stop, '-unique-strains.png', sep=''))
     return(o)
 }
 
-genotypes <- importGenotypes(chromosome, start, stop)
-strainNames <- colnames(genotypes)[10:ncol(genotypes)]
-genotypes <- genotypes[, (strainNames) := lapply(.SD, function(x) factor(x, levels=c('0/0', './.', '1/1'))), .SDcols=strainNames][]
-genotypes <- genotypes[, (strainNames) := lapply(.SD, function(x) as.numeric(x)), .SDcols=strainNames]
-fillNA(genotypes, 9)
-
-output <- testRegion(genotypes, matingTypes, chromosome, start, stop)
+output <- testRegion(matingTypes, chromosome, start, stop)
 
 fwrite(output, file=paste('reports/', 'chr', chromosome, '-', start, '-', stop, '.tsv', sep=''), quote=F, col.names=T, row.names=F, sep="\t")
