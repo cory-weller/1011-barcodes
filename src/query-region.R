@@ -27,33 +27,14 @@ importGenotypes <- function(chromosome, start, stop) {
     }
     setnames(genotypes, headerText)
     strainNames <- colnames(genotypes)[10:ncol(genotypes)]
-    genotypes <- genotypes[, (strainNames) := lapply(.SD, function(x) factor(x, levels=c('0/0', './.', '1/1'))), .SDcols=strainNames][]
+    # modify genotypes to factors then to numeric
+    # anything that isn't '0/0' or '1/1' becomes NA
+    genotypes <- genotypes[, (strainNames) := lapply(.SD, function(x) factor(x, levels=c('0/0', '1/1'))), .SDcols=strainNames][]
     genotypes <- genotypes[, (strainNames) := lapply(.SD, function(x) as.numeric(x)), .SDcols=strainNames]
-    replaceValues(genotypes, 2, NA)
-    replaceValues(genotypes, 1, 0)
-    replaceValues(genotypes, 3, 1)
+    # ref allele is now 1
+    # alt allele is now 2
     return(genotypes[])
 }
-
-
-matingTypes <- fread('data/mating-types.tsv')
-matingTypes <- matingTypes[Mating %in% c('a','b')]
-
-#if (any("1/1" == DT[,10:length(colnames(DT)), with=FALSE])) {
-    # convert to factor, then to numeric, such that "0/0" is now 1, "1/1" is now 3
-
-fillNA <- function(DT, x) {
-    # replaces all NA values with x in data.table DT
-    for (j in seq_len(ncol(DT)))
-        set(DT,which(is.na(DT[[j]])),j,x)
-}
-
-replaceValues <- function(DT, x1, x2) {
-    # replaces all NA values with x in data.table DT
-    for (j in seq_len(ncol(DT)))
-        set(DT, which(DT[[j]] == x1), j, x2)
-}
-
 
 testRegion <- function(matingTypes, chromosome, start, stop) {
     DT <- importGenotypes(chromosome, start, stop)
@@ -68,10 +49,8 @@ testRegion <- function(matingTypes, chromosome, start, stop) {
         strains <- matingTypes[Mating == matingType, Standardized_name]
         remaining <- strains[strains != starting.strain]
         chosen <- DT[, c('#CHROM', 'POS'), with=FALSE]
-        chosen[, 'S288C' := 0]
+        chosen[, 'S288C' := 1]
         chosen[, c('#CHROM', 'POS') := NULL]
-        #chosen[, nRef := 1]
-        #chosen[, nAlt := 0]
         # while there are still candidates remaining to be checked
         while(length(remaining) > 0) {
             # randomly take one of the remaining strains and extract its genotypes
@@ -89,12 +68,51 @@ testRegion <- function(matingTypes, chromosome, start, stop) {
             remaining <- remaining[remaining != candidate]
         }
         n.strains <- ncol(chosen)
-    chosenStrains <- paste(colnames(chosen)[! colnames(chosen) %in% c('#CHROM','POS', 'nRef','nAlt')], collapse=',')
-    return(data.table(chromosome, start, stop, matingType, n.strains, chosenStrains))
+        chosenStrains <- paste(colnames(chosen)[! colnames(chosen) %in% c('#CHROM','POS', 'nRef','nAlt')], collapse=',')
+        return(data.table(chromosome, start, stop, matingType, n.strains, chosenStrains))
     }
     return(o)
 }
 
+
+matingTypes <- fread('data/mating-types.tsv')
+matingTypes <- matingTypes[Mating %in% c('a','b')]
+
+
 output <- testRegion(matingTypes, chromosome, start, stop)
 
 fwrite(output, file=paste('reports/', 'chr', chromosome, '-', start, '-', stop, '.tsv', sep=''), quote=F, col.names=T, row.names=F, sep="\t")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## OLD FUNCTIONS
+
+# fillNA <- function(DT, x) {
+#     # replaces all NA values with x in data.table DT
+#     for (j in seq_len(ncol(DT)))
+#         set(DT,which(is.na(DT[[j]])),j,x)
+# }
+# 
+# replaceValues <- function(DT, x1, x2) {
+#     # modifies all x1 values to x2 within DT
+#     for (j in seq_len(ncol(DT)))
+#         set(DT, which(DT[[j]] == x1), j, x2)
+# }
