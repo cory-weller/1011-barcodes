@@ -6,6 +6,7 @@ From: ubuntu:focal
     apt install -y \
         dirmngr \
         gnupg \
+        wget \
         apt-transport-https \
         ca-certificates \
         software-properties-common \
@@ -36,8 +37,6 @@ From: ubuntu:focal
         libxml2-dev \
         xauth
     
-    # libopenmpi-dev openmpi-bin openmpi-common openmpi-doc openssh-client openssh-server libssh-dev wget vim git nano git cmake  gfortran g++ curl wget python autoconf bzip2 libtool libtool-bin python-pip python-dev
-
     R --no-echo -e "install.packages('data.table', repos='http://cran.us.r-project.org')"
     R --no-echo -e "install.packages('R.utils', repos='http://cran.us.r-project.org')"
     R --no-echo -e "install.packages('ggplot2', repos='http://cran.us.r-project.org')"
